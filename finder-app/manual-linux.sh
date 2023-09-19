@@ -125,7 +125,7 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 sudo cp "$CROSS_PATH/lib/ld-linux-aarch64.so.1" lib/
 
 sudo cp "$CROSS_PATH/lib64/libm.so.6" lib64/
-sudo cp"$CROSS_PATH/lib64/libresolv.so.2" lib64/
+sudo cp "$CROSS_PATH/lib64/libresolv.so.2" lib64/
 sudo cp "$CROSS_PATH/lib64/libc.so.6" lib64/
 
 
