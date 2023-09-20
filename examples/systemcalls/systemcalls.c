@@ -10,14 +10,16 @@
 bool do_system(const char *cmd)
 {
 
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
+    int retCode;
+    bool retVal = true;
+    retCode = system(cmd);
+    
+    if (retCode)
+    {
+    	retVal = false;
+    }
 
-    return true;
+    return retVal;
 }
 
 /**
@@ -49,18 +51,58 @@ bool do_exec(int count, ...)
     // and may be removed
     command[count] = command[count];
 
-/*
- * TODO:
- *   Execute a system command by calling fork, execv(),
- *   and wait instead of system (see LSP page 161).
- *   Use the command[0] as the full path to the command to execute
- *   (first argument to execv), and use the remaining arguments
- *   as second argument to the execv() command.
- *
-*/
+    // This solution is rewritten and expanded version of the code from page 161 of the linux system programming book
 
+    int status;
+    pid_t processID;
+    
+    openlog("assignment3-part1",LOG_PID, LOG_USER); 
+    processID = fork();
+    
+    if(processID==-1) // process could not fork
+    {
+    	syslog(LOG_ERR,"Could not fork! Returning false\r\n");
+    	
+    	closelog();
+        return false;
+    }
+    else if (processID == 0) // process child fork
+    {
+        // save path at command[0] and try execv
+        const char* path = command[0];
+        execv(path, command);
+        
+        // and if it returns it failed so log...
+        syslog(LOG_ERR,"Could execv command with path: %s! Exiting with Failure\r\n",path);
+        exit(EXIT_FAILURE);
+        
+        
+    }
+    
+    // check if child process failed or stopped and save the status
+    if(waitpid(processID, &status, 0) == -1) // if the wait fails return false...
+    {
+    	syslog(LOG_ERR,"waitpid returned -1 Returning false\r\n");
+    	closelog();
+    	return false;
+    }
+    else if(WIFEXITED(status)) // else check if the the status indicated a child process exited
+    {
+    	syslog(LOG_WARNING,"WIFEXITED was true with a status of %d",status);
+        // if it did...
+        if(WEXITSTATUS(status)!= 0) // check if that status is non-zero...
+        {
+            syslog(LOG_ERR,"WEXITSTATUS was non-zero with a status of %d so returning false\r\n",status);
+            closelog();
+            // return false because it was a non zero status
+            return false;
+        }
+
+    }
+    
+    // return true because the process did not exit so it must have succeeded
     va_end(args);
-
+    closelog();
     return true;
 }
 
@@ -85,15 +127,73 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     command[count] = command[count];
 
 
-/*
- * TODO
- *   Call execv, but first using https://stackoverflow.com/a/13784315/1446624 as a refernce,
- *   redirect standard out to a file specified by outputfile.
- *   The rest of the behaviour is same as do_exec()
- *
-*/
 
+    // This solution is rewritten and expanded version of the code suggested to us https://stackoverflow.com/a/13784315/1446624
+
+    int childPid;
+     openlog("assignment3-part1",LOG_PID, LOG_USER); 
+    
+    int fileDesc = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    
+    if (fileDesc < 0) 
+    { 
+        syslog(LOG_ERR,"Could not open file! Returning false\r\n"); 
+        closelog();
+        return false; 
+    }
+    
+    switch (childPid = fork()) 
+    {
+        case -1: 
+            syslog(LOG_ERR,"Could not fork! Returning false\r\n"); 
+            closelog(); 
+            return false;
+        case 0:
+            if (dup2(fileDesc, 1) < 0) //if dup2 does not set the filedesc to be the new stdoutput fd fails...
+            { 
+                syslog(LOG_ERR,"Could not set filedesc to stdout! Returning false\r\n"); 
+                closelog();
+                close(fileDesc); 
+                return false; 
+            }
+            
+            close(fileDesc); // cleanup and close fileDesc
+            
+            const char* path = command[0];
+            
+            execv(path, command);
+            
+             
+            syslog(LOG_ERR,"Could execv command with path: %s! Exiting with Failure\r\n",path);
+            exit(EXIT_FAILURE);
+        default:
+	    close(fileDesc);
+	    int status;
+	    
+	    // check if child process failed or stopped and save the status
+            if(waitpid(childPid, &status, 0) == -1) // if the wait fails return false...
+            {
+    	        syslog(LOG_ERR,"waitpid returned -1 Returning false\r\n");
+    	        closelog();
+    	        return false;
+            }
+            else if(WIFEXITED(status)) // else check if the the status indicated a child process exited
+           {
+    	        syslog(LOG_WARNING,"WIFEXITED was true with a status of %d",status);
+                // if it did...
+                if(WEXITSTATUS(status)!= 0) // check if that status is non-zero...
+                {
+                    syslog(LOG_ERR,"WEXITSTATUS was non-zero with a status of %d so returning false\r\n",status);
+                    closelog();
+                    // return false because it was a non zero status
+                    return false;
+                }
+
+            }
+            
+    }// end of switch
+    
     va_end(args);
-
+    closelog();
     return true;
 }
