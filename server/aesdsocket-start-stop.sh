@@ -10,11 +10,11 @@ then #if it's less than required exit error 1 and print
     exit 1
     
 fi
-
+# MAKE SURE TO ADD THE -- -daemon options.......
 case "$1" in
         start)
             echo "Starting aesdsocket"
-            start-stop-daemon -S -n aesdsocket -a /usr/bin/aesdsocket
+            start-stop-daemon -S -n aesdsocket -a /usr/bin/aesdsocket -- -d
             ;;
         stop)
             echo "Stopping aesdsocket"
