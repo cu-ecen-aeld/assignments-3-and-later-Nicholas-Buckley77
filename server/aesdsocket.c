@@ -1,6 +1,6 @@
 // Nicholas Buckley AESDsocket socket base program!
 
-// change found on stack overflow to allow netdb import to work!
+// change found on stack overflow to allow netdb import to work! (It means to use POSIX 2004 standard defs)
 #define _XOPEN_SOURCE 600
 
 
@@ -26,6 +26,7 @@
 #define PORT_NUM ("9000")
 
 
+// addrinfo structure for reference gotten from lecture
 /*
 struct addrinfo {
     int ai_flags;
@@ -40,11 +41,11 @@ struct addrinfo {
 };*/
 
 
+// Setup global file pointers and runAsDaemon
 int sockfd;
 int openConSock;
 int writefp;
 int readfp;
-// setup system log with PID and CONS and at priorty USER
 
 
 bool runAsDaemon = false;
@@ -101,7 +102,7 @@ void exitSigHandler(int signo)
 // main program that get's command line arguments
 int main( int argc, char* argv[]) {
 
-     
+    // obseenly poor implementation with 1 instead of -1 and I should have used a whileloop because getopt handles more than 1 arg...
     for(int i = 1; i < argc; i++)
     {
         int option;
@@ -118,6 +119,8 @@ int main( int argc, char* argv[]) {
 
 
     openlog("NB aesdSocket", LOG_PID | LOG_CONS, LOG_USER);
+
+    // register signals to be handled by exitSigHandler!
     signal(SIGINT, exitSigHandler);
     signal(SIGTERM, exitSigHandler);
 
@@ -144,6 +147,8 @@ int main( int argc, char* argv[]) {
         return -1;
     }
     
+    // From hint from lecture and added to fix issue of sockets stepping on eachother
+    // SOL_SOCKET is at the socket level, allow reuse of binding local addresses, option enabled, sizeof int
     int op = 1;
     if(setsockopt(sockfd, SOL_SOCKET,SO_REUSEADDR,&op,sizeof(int)) == -1)
     {
@@ -151,12 +156,14 @@ int main( int argc, char* argv[]) {
         return -1;
     }
 
+    // socket file desc, assign address based on the filedec of the given socket, size of address
     if (bind(sockfd, res->ai_addr, res->ai_addrlen) == -1) 
     {
         syslog(LOG_ERR,"bind failed");
         return -1;
     }
 
+    // turn socket into a passive socket to accept connections, 10 connections in queue
     if (listen(sockfd, 10) == -1) 
     {
         syslog(LOG_ERR,"Not listening"); 
