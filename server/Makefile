@@ -6,6 +6,7 @@
 # Added the cross_compile flag for compiling with Arm x86 if the argument is added
 CC = $(CROSS_COMPILE)gcc
 CFLAGS = -Wall -Wextra -pedantic -std=c99
+LDFLAGS= -pthread 
 
 SRCS = aesdsocket.c
 
@@ -19,10 +20,10 @@ APP = aesdsocket
 all: $(APP)
 
 $(APP): $(OBJS)
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $^ -o $@ -lrt
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(OBJS) $(APP)
