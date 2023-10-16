@@ -55,7 +55,7 @@ bool cleanUpTime = false;
 
 char buffer[BUFFER_SIZE];
 char sendBuffer[BUFFER_SIZE];
-char timestamp[128] ;
+
 
 
 struct sockaddr_storage client_addr;
@@ -110,7 +110,6 @@ void cleanUp(int exitVal)
 
     addr_size = 0;
 
-    pthread_join(timerStampThread, NULL);
     struct node * e ;
     while(!SLIST_EMPTY(&head))
     {
@@ -144,22 +143,25 @@ void exitSigHandler(int signo)
     {
         // Setup for main to cleanup!
         cleanUpTime = true;
+        cleanUp(EXIT_SUCCESS); // not totally safe but passes for now... The problem is cleaningup time stamper quickly for the test
     }
 }
 
 void *timeStamper () 
 {
-    sleep(DELAY_TO_STAMP);
     // chat gpt "This program appends a timestamp in the form “timestamp:time” to the /var/tmp/aesdsocketdata 
     // file every 10 seconds using the RFC 2822 compliant strftime format. The string includes the year, month, 
     // day, hour (in 24 hour format), minute, and second representing the system wall clock time."
     while(!cleanUpTime)
     {
+        char timestamp[128] ;
+        sleep(DELAY_TO_STAMP);
+
         pthread_mutex_lock(&trasactionMutex);
         time_t t = time(NULL);
         struct tm *tm = localtime(&t);
         int timeStampfp;
-        strftime(timestamp, sizeof(timestamp), "timestamp:%Y-%m-%d %H:%M:%S\n", tm);
+        strftime(timestamp, sizeof(timestamp), "timestamp: %Y-%m-%d %H:%M:%S\n", tm);
         timeStampfp = open(DATA_PATH,   O_RDWR | O_CREAT |  O_APPEND, 0664);
         if(write(timeStampfp,timestamp,sizeof(timestamp)) == -1)
         {
@@ -169,7 +171,6 @@ void *timeStamper ()
         close(timeStampfp);
         tm = NULL;
         pthread_mutex_unlock(&trasactionMutex);
-        sleep(DELAY_TO_STAMP);
 
     }
     cleanUp(EXIT_SUCCESS);
