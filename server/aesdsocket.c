@@ -32,6 +32,7 @@
 #define BUFFER_SIZE 1024
 #define DATA_PATH ("/var/tmp/aesdsocketdata")
 #define PORT_NUM ("9000")
+#define DELAY_TO_STAMP (10)
 
 
 // addrinfo structure for reference gotten from lecture
@@ -53,7 +54,6 @@ pthread_mutex_t trasactionMutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Setup global file pointers and runAsDaemon
 int sockfd;
-int openConSock;
 int writefp;
 int readfp;
 
@@ -64,9 +64,27 @@ bool cleanUpTime = false;
 
 char buffer[BUFFER_SIZE];
 char sendBuffer[BUFFER_SIZE];
+char timestamp[128] ;
+
 
 struct sockaddr_storage client_addr;
 socklen_t addr_size = sizeof(client_addr);
+
+pthread_t timerStampThread;
+
+
+// chat gpt "Can you show me creating a thread and adding it to a linked list queue to run"
+
+
+// The data type for the node
+struct node
+{   
+    pthread_t id;
+    int socketFd;
+    bool transComplete;
+    // This macro does the magic to point to other nodes
+    SLIST_ENTRY(node) nodes;
+};
 
 // This macro creates the data type for the head of the queue
 // for nodes of type 'struct node'
@@ -78,7 +96,7 @@ SLIST_HEAD(head_s, node) head;
 *  "Gracefully exits when SIGINT or SIGTERM is received, completing any open connection operations,
 *  closing any open sockets, and deleting the file /var/tmp/aesdsocketdata."
 */
-void cleanUp(void)
+void cleanUp(int exitVal)
 {
     if (writefp != -1) 
     {
@@ -99,18 +117,33 @@ void cleanUp(void)
         sockfd = -1;
     }
 
-    if (openConSock != -1) 
-    {
-        shutdown(openConSock,SHUT_RDWR);
-        close(openConSock);
-        openConSock = -1;
-    }
-    //free(&head);
+    
+    
+    addr_size = 0;
 
-    syslog(LOG_INFO,"Caught signal, exiting");
+    pthread_join(timerStampThread, NULL);
+    struct node * e ;
+    while(!SLIST_EMPTY(&head))
+    {
+        e = SLIST_FIRST(&head);
+        SLIST_REMOVE(&head,e,node,nodes);
+        pthread_join(e->id, NULL);
+        shutdown(e->socketFd,SHUT_RDWR);
+        close(e->socketFd);
+        e->socketFd = -1;
+        free(e);
+        
+    }
+
+    pthread_mutex_destroy(&mutex);
+    pthread_mutex_destroy(&trasactionMutex);
+    
+
+    syslog(LOG_INFO,"Caught signal or failed, exiting");
 
     closelog();
     remove(DATA_PATH);
+    exit(exitVal);
 }
 
 void exitSigHandler(int signo) 
@@ -122,78 +155,47 @@ void exitSigHandler(int signo)
     }
 }
 
-void timeStamp (int signo)
+void *timeStamper () 
 {
+    sleep(DELAY_TO_STAMP);
     // chat gpt "This program appends a timestamp in the form “timestamp:time” to the /var/tmp/aesdsocketdata 
     // file every 10 seconds using the RFC 2822 compliant strftime format. The string includes the year, month, 
     // day, hour (in 24 hour format), minute, and second representing the system wall clock time."
-
-    if(signo == SIGALRM)
+    while(!cleanUpTime)
     {
+        pthread_mutex_lock(&trasactionMutex);
         time_t t = time(NULL);
         struct tm *tm = localtime(&t);
-        char timestamp[128] ;
         int timeStampfp;
-        strftime(timestamp, sizeof(timestamp), "timestamp:%a, %d %b %Y %T %z\n", tm);
-        printf("%s",timestamp);
-        pthread_mutex_lock(&trasactionMutex);
+        strftime(timestamp, sizeof(timestamp), "timestamp:%Y-%m-%d %H:%M:%S\n", tm);
         timeStampfp = open(DATA_PATH,   O_RDWR | O_CREAT |  O_APPEND, 0664);
         if(write(timeStampfp,timestamp,sizeof(timestamp)) == -1)
         {
-            printf("FAILED TO WRITE TIME STAMP");
+            syslog(LOG_INFO,"Failed to write timeStamp");
+            cleanUp(EXIT_FAILURE);
         }     
         close(timeStampfp);
+        tm = NULL;
         pthread_mutex_unlock(&trasactionMutex);
+        sleep(DELAY_TO_STAMP);
 
     }
-
-
+    cleanUp(EXIT_SUCCESS);
+    return NULL;
 }
 
 
-// chat gpt "Can you show me creating a thread and adding it to a linked list queue to run"
 
 
-// The data type for the node
-struct node
-{   
-    pthread_t id;
-    int socketFd;
-    bool transComplete;
-    // This macro does the magic to point to other nodes
-    SLIST_ENTRY(node) nodes;
-};
-
-/**
- * This structure should be dynamically allocated and passed as
- * an argument to your thread using pthread_create.
- * It should be returned by your thread so it can be freed by
- * the joiner thread.
- */
-struct thread_data{
-    
-    // This macro does the magic to point to other nodes
-    struct node *thisNode;
-};
-
-
-
-
-
-// Initialize the head before use
 
 
 //https://blog.taborkelly.net/programming/c/2016/01/09/sys-queue-example.html
 void *add_to_queue_and_send(void *arg) {
-    struct thread_data* addThread = (struct thread_data *)arg;
+    struct node* addedNode = (struct node *)arg;
     pthread_mutex_lock(&mutex);
-    struct node * e = addThread->thisNode;
     
-    e->id = addThread->thisNode->id;
-    e->socketFd = addThread->thisNode->socketFd;
-    e->transComplete = false;
     
-    SLIST_INSERT_HEAD(&head, e, nodes);
+    SLIST_INSERT_HEAD(&head, addedNode, nodes);
     
     
     pthread_mutex_unlock(&mutex);
@@ -223,99 +225,99 @@ void *add_to_queue_and_send(void *arg) {
 
     syslog(LOG_INFO,"Accepted connection from %s",ipAccepted);
 
+
+    
+
     // open the writing file and create it if it doesn't exist!
-    writefp = open(DATA_PATH,   O_RDWR | O_CREAT |  O_APPEND, 0664);
-
-    if (writefp == -1 ) 
-    {
-        syslog(LOG_ERR,"Open write file failed");
-        exit(EXIT_FAILURE);
-    }
-
-    int bytes_received = 1;
-    char lastChar = ' ';
-
-    // While buffer recieved end is not '\n'
-    while (lastChar != '\n') 
-    {
-        // Recieve and then write recieved size to buffer size of data!
-        bytes_received = recv(e->socketFd, buffer, BUFFER_SIZE - 1, 0);
-
-        if(bytes_received == -1)
-        {
-            syslog(LOG_ERR,"Bytes not recieved");
-            break;
-        }
-
-        pthread_mutex_lock(&trasactionMutex);
-
-        if(write(writefp,buffer,bytes_received) == -1)
-        {
-            syslog(LOG_ERR,"Bytes not written");
-            break;
-        }
-        lastChar = buffer[bytes_received - 1];
-    }
-    pthread_mutex_unlock(&trasactionMutex);
+    //writefp = open(DATA_PATH, O_RDWR | O_CREAT |  O_APPEND, 0664);
 
     
 
 
-    if (bytes_received == -1) 
+    
+    int bytes_received ;
+
+    bool recieving = true;
+    pthread_mutex_lock(&trasactionMutex);
+    // open the writing file and create it if it doesn't exist!
+    writefp = open(DATA_PATH, O_RDWR | O_CREAT |  O_APPEND, 0664);
+
+    if (writefp == -1 ) 
     {
-        syslog(LOG_INFO,"recv fail");
+        syslog(LOG_ERR,"Open write file failed");
+        cleanUp(EXIT_FAILURE);
     }
 
+    // While Recieving bytes and then write recieved size to buffer size of data!
+    while (recieving) 
+    {
+        bytes_received = recv(addedNode->socketFd, buffer, BUFFER_SIZE - 1, 0);
+        if(bytes_received == -1)
+        {
+            syslog(LOG_ERR,"Failed to recv bytes");
+            cleanUp(EXIT_FAILURE);
+        }
+        else if(bytes_received == 0)
+        {
+            recieving = false;
+        }
+        else
+        {
+        
+        
+            if(write(writefp,buffer,bytes_received) == -1)
+            {
+                syslog(LOG_ERR,"Bytes not written");
+                cleanUp(EXIT_FAILURE);
+            }
+
+            // if there was a \n written to the file...
+            if(strchr(buffer,'\n') != NULL)
+            {
+                recieving = false;
+            }
+        }
+    }
     // Reset file pointer
     close(writefp);
+    //pthread_mutex_unlock(&trasactionMutex);
+
+        
 
 
+
+    //pthread_mutex_lock(&trasactionMutex);
 
     // Open file to be read only
     readfp = open(DATA_PATH,  O_RDONLY );
     if (readfp == -1 ) 
     {
         syslog(LOG_INFO,"open fail on read");
-        exit(EXIT_FAILURE);
+        cleanUp(EXIT_FAILURE);
     }
 
-
-    int bytes_send = 1;
-    lastChar = ' ';
-    // while sendBuffer's last char is not '\n'
-    while (lastChar != '\n') 
+    int bytes_send;
+    // Send file data until there's nothing left
+    while ((bytes_send = read(readfp, sendBuffer, BUFFER_SIZE )) > 0) 
     {
-        //pthread_mutex_lock(&trasactionMutex);
-
-        // Read and send the contents of the file in buffer size or less packets
-        if((bytes_send = read(readfp, sendBuffer, BUFFER_SIZE)) == -1)
-        {
-            syslog(LOG_ERR,"read fail");
-            break;
-        }
-        //pthread_mutex_unlock(&trasactionMutex);
-        printf("Sending %s\r\n",sendBuffer);
-        if (send(e->socketFd, sendBuffer, bytes_send, 0) == -1) 
+        
+        if (send(addedNode->socketFd, sendBuffer, bytes_send, 0) == -1) 
         {
             syslog(LOG_ERR,"send fail");
-            break;
+            cleanUp(EXIT_FAILURE);
+
         }
 
-        lastChar = sendBuffer[bytes_send - 1];
     }
-    
-
+    close(readfp);
+    pthread_mutex_unlock(&trasactionMutex);
 
     // Close connection from the ip and the socket and readfile to reset back to accept
     syslog(LOG_INFO,"Closed connection from %s",ipAccepted);
-    printf("Closed connection from %s\r\n",ipAccepted);
-    close(readfp);
-    close(e->socketFd);
-    e->transComplete = true;
-    e = NULL;
-    addThread = NULL;
 
-    printf("WOWOWOW EXIT THREAD\r\n");
+
+    close(addedNode->socketFd);
+    addedNode->transComplete = true;
 
     return NULL;
 }
@@ -337,36 +339,12 @@ int main( int argc, char* argv[]) {
         }
     }
 
-
-    
-
-
     openlog("NB aesdSocket", LOG_PID | LOG_CONS, LOG_USER);
 
     // register signals to be handled by exitSigHandler!
     signal(SIGINT, exitSigHandler);
     signal(SIGTERM, exitSigHandler);
     // assignment 6
-    signal(SIGALRM,timeStamp);
-    alarm(10);
-    
-    /*timer_t timeStamper;
-    struct sigevent timer;
-    memset(&timer, 0, sizeof(struct sigevent));
-    timer.sigev_notify = SIGEV_SIGNAL;
-    timer.sigev_signo = SIGALRM;
-    timer_create(CLOCK_REALTIME,&timer,&timeStamper);
-
-    struct itimerval itimer;
-    itimer.it_value.tv_sec = 10;
-    itimer.it_value.tv_usec = 0;
-    itimer.it_interval.tv_sec = 10;
-    itimer.it_interval.tv_usec = 0;
-
-    if (setitimer(ITIMER_REAL, &itimer, NULL) == -1) {
-        printf("Error setting timer.\n");
-        return 1;
-    }*/
     
     
     SLIST_INIT(&head);
@@ -421,8 +399,6 @@ int main( int argc, char* argv[]) {
     res = NULL;
 
 
-    //printf("Socket bound to port %s\n", PORT_NUM);
-
 
     // Skeleton gotten and adapted from Bing Chat gpt 4 "how to create a daemon process!"
     if(runAsDaemon)
@@ -432,17 +408,21 @@ int main( int argc, char* argv[]) {
         if(pid < 0)
         {
             syslog(LOG_ERR,"Fork fail");
+            cleanUp(EXIT_FAILURE);
+
         }
 
         if(pid > 0)
         {
             syslog(LOG_USER,"Exit parent");
-            exit(0);
+            cleanUp(EXIT_FAILURE);
         }
 
         if(setsid() == -1)
         {
             syslog(LOG_ERR,"failed to set sid for child remaining");
+            cleanUp(EXIT_FAILURE);
+
         }
 
         // close all paths to run in background as a daemon
@@ -459,64 +439,57 @@ int main( int argc, char* argv[]) {
         umask(0);
 
     }
+    pthread_create(&timerStampThread,NULL, timeStamper, NULL);
     
-
-
     
     while (!cleanUpTime) 
     {
+        struct node* thisNode = (struct node*)malloc(sizeof(struct node));
+    
+        if( thisNode == NULL)
+        {
+            syslog(LOG_ERR,"Node failed to malloc");
+            cleanUp(EXIT_FAILURE);
+        }
         
-        openConSock = accept(sockfd, (struct sockaddr*)&client_addr, &addr_size);
+        thisNode->transComplete = false;
+        thisNode->id = 0;
+        
+        thisNode->socketFd = accept(sockfd, (struct sockaddr*)&client_addr, &addr_size);
 
         
-        if(openConSock == -1)
+        if(thisNode->socketFd == -1)
         {
             syslog(LOG_ERR,"connection accept failed");
+            cleanUp(EXIT_FAILURE);
         }
 
-        /*
-        //https://stackoverflow.com/questions/5392813/accept-multiple-subsequent-connections-to-socket
-        pid_t accepter = fork();
 
-        if(!accepter) // if I am the child
-        {
-            close(sockfd); // close the listener
-
-            exit(0);
-        }*/
-        struct thread_data *newThread = (struct thread_data*)malloc(sizeof(struct thread_data));
-        newThread->thisNode = (struct node*)malloc(sizeof(struct node));
-    
-        if(newThread == NULL || newThread->thisNode == NULL)
-        {
-            printf("wow");
-        }
-        
-        newThread->thisNode->socketFd = openConSock;
-        
-        newThread->thisNode->id = 0;
-
-        pthread_create(&(newThread->thisNode->id), NULL, add_to_queue_and_send, (void*)newThread);
+        pthread_create(&(thisNode->id), NULL, add_to_queue_and_send, (void*)thisNode);
+        thisNode = NULL;
         pthread_mutex_lock(&mutex);
-        printf("after main lock...");
 
-        struct node * e  = NULL;
-        SLIST_FOREACH(e, &head, nodes)
+        struct node * e ;
+        if(!SLIST_EMPTY(&head))
         {
-
-            printf("ID = %ld",(e->id));
-            if(e->transComplete)
+            SLIST_FOREACH(e, &head, nodes)
             {
-                SLIST_REMOVE(&head,e,node,nodes);
-                pthread_join(e->id, NULL);
-                free(e);
+
+                if(e->transComplete)
+                {
+                    SLIST_REMOVE(&head,e,node,nodes);
+                    pthread_join(e->id, NULL);
+                    shutdown(e->socketFd,SHUT_RDWR);
+                    close(e->socketFd);
+                    free(e);
+                }
             }
         }
+        
         pthread_mutex_unlock(&mutex);
     }
     
-    cleanUp();
-    exit(0);
+    cleanUp(EXIT_SUCCESS);
     return 0;
 
 }
