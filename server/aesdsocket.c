@@ -35,20 +35,6 @@
 #define DELAY_TO_STAMP (10)
 
 
-// addrinfo structure for reference gotten from lecture
-/*
-struct addrinfo {
-    int ai_flags;
-    int ai_family;
-    int ai_socktype;
-    int ai_protocol;
-    size_t ai_addrlen;
-    struct sockaddr *ai_addr;
-    char *ai_canonname;
-
-    struct addrinfo *ai_next;
-};*/
-
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t trasactionMutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -56,7 +42,6 @@ pthread_mutex_t trasactionMutex = PTHREAD_MUTEX_INITIALIZER;
 int sockfd;
 int writefp;
 int readfp;
-
 
 
 bool runAsDaemon = false;
@@ -73,9 +58,6 @@ socklen_t addr_size = sizeof(client_addr);
 pthread_t timerStampThread;
 
 
-// chat gpt "Can you show me creating a thread and adding it to a linked list queue to run"
-
-
 // The data type for the node
 struct node
 {   
@@ -85,6 +67,9 @@ struct node
     // This macro does the magic to point to other nodes
     SLIST_ENTRY(node) nodes;
 };
+
+struct node* thisNode;
+
 
 // This macro creates the data type for the head of the queue
 // for nodes of type 'struct node'
@@ -117,8 +102,6 @@ void cleanUp(int exitVal)
         sockfd = -1;
     }
 
-    
-    
     addr_size = 0;
 
     pthread_join(timerStampThread, NULL);
@@ -137,6 +120,9 @@ void cleanUp(int exitVal)
 
     pthread_mutex_destroy(&mutex);
     pthread_mutex_destroy(&trasactionMutex);
+    
+
+    free(thisNode);
     
 
     syslog(LOG_INFO,"Caught signal or failed, exiting");
@@ -225,14 +211,7 @@ void *add_to_queue_and_send(void *arg) {
 
     syslog(LOG_INFO,"Accepted connection from %s",ipAccepted);
 
-
     
-
-    // open the writing file and create it if it doesn't exist!
-    //writefp = open(DATA_PATH, O_RDWR | O_CREAT |  O_APPEND, 0664);
-
-    
-
 
     
     int bytes_received ;
@@ -328,16 +307,20 @@ void *add_to_queue_and_send(void *arg) {
 // main program that get's command line arguments
 int main( int argc, char* argv[]) {
 
-    // fixed the implementation of option    
-    int option;
-    while((option = getopt(argc, argv, "d")) != -1)
+    // fixed the implementation of option  
+    if(argc > 0)
     {
-        //printf("arg =%d", option);
-        if(option == 'd')
+        int option;
+        while((option = getopt(argc, argv, "d")) != -1)
         {
-            runAsDaemon = true;
+            //printf("arg =%d", option);
+            if(option == 'd')
+            {
+                runAsDaemon = true;
+            }
         }
-    }
+    }  
+    
 
     openlog("NB aesdSocket", LOG_PID | LOG_CONS, LOG_USER);
 
@@ -357,7 +340,7 @@ int main( int argc, char* argv[]) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-    hints.ai_protocol = 0;
+
 
     if(getaddrinfo(NULL, PORT_NUM, &hints, &res) != 0)
     {
@@ -441,10 +424,9 @@ int main( int argc, char* argv[]) {
     }
     pthread_create(&timerStampThread,NULL, timeStamper, NULL);
     
-    
     while (!cleanUpTime) 
     {
-        struct node* thisNode = (struct node*)malloc(sizeof(struct node));
+        thisNode = (struct node*)malloc(sizeof(struct node));
     
         if( thisNode == NULL)
         {
@@ -453,7 +435,6 @@ int main( int argc, char* argv[]) {
         }
         
         thisNode->transComplete = false;
-        thisNode->id = 0;
         
         thisNode->socketFd = accept(sockfd, (struct sockaddr*)&client_addr, &addr_size);
 
@@ -466,13 +447,14 @@ int main( int argc, char* argv[]) {
 
 
         pthread_create(&(thisNode->id), NULL, add_to_queue_and_send, (void*)thisNode);
-        thisNode = NULL;
         pthread_mutex_lock(&mutex);
+        thisNode = NULL;
 
         struct node * e ;
+        struct node * safe ;
         if(!SLIST_EMPTY(&head))
         {
-            SLIST_FOREACH(e, &head, nodes)
+            SLIST_FOREACH_SAFE(e, &head, nodes,safe)
             {
 
                 if(e->transComplete)
