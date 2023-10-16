@@ -38,6 +38,12 @@
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t trasactionMutex = PTHREAD_MUTEX_INITIALIZER;
 
+// copied from freebsd
+#define	SLIST_FOREACH_SAFE(var, head, field, tvar)			\
+	for ((var) = SLIST_FIRST((head));				\
+	    (var) && ((tvar) = SLIST_NEXT((var), field), 1);		\
+	    (var) = (tvar))
+
 // Setup global file pointers and runAsDaemon
 int sockfd;
 int writefp;
