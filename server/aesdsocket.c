@@ -388,7 +388,6 @@ int main( int argc, char* argv[]) {
     res = NULL;
 
 
-    pthread_create(&timerStampThread,NULL, timeStamper, NULL);
     // Skeleton gotten and adapted from Bing Chat gpt 4 "how to create a daemon process!"
     if(runAsDaemon)
     {
@@ -428,6 +427,8 @@ int main( int argc, char* argv[]) {
         umask(0);
 
     }
+    pthread_create(&timerStampThread,NULL, timeStamper, NULL);
+
     
     while (!cleanUpTime) 
     {
