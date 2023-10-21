@@ -32,7 +32,31 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     /**
     * TODO: implement per description
     */
+
+   if(buffer == NULL)
+   {
     return NULL;
+   }
+
+   uint8_t entryIndex = buffer->out_offs;
+
+   int index = char_offset ;
+
+    while (buffer->entry[entryIndex].buffptr !=NULL && entryIndex < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED + buffer->out_offs)
+    {
+        if(index >= buffer->entry[entryIndex%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size )
+        {
+            index-=buffer->entry[entryIndex%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size;
+            entryIndex++;
+        }
+        else
+        {
+            *entry_offset_byte_rtn = index;
+            return &buffer->entry[entryIndex%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED];
+        }
+    }
+    return NULL;
+
 }
 
 /**
@@ -45,8 +69,26 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
     /**
-    * TODO: implement per description
+    * chat gpt assisted implementation "add circular buffer entry for wrapping circular buffer c" (it mostly reminded me of the structure and order of implementation)
     */
+    
+
+    buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
+    buffer->entry[buffer->in_offs].size = add_entry->size;
+
+    if(buffer->full)
+    {
+        buffer->out_offs = (buffer->out_offs + 1)%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    }
+
+    buffer->in_offs = (buffer->in_offs + 1)%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+
+    if(buffer->in_offs ==  buffer->out_offs )
+    {
+        buffer->full = true;
+    }
+    
+
 }
 
 /**
