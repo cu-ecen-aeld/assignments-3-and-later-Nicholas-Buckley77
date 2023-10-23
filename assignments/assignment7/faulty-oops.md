@@ -29,7 +29,7 @@ Hardware name: linux,dummy-virt (DT) <br />
 pstate: 80000005 (Nzcv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--) <br />
 
 
-[pc : faulty_write+0x14/0x20 [faulty] ](#memory-breakdown) <sub> Memory <sub><br />
+[pc : faulty_write+0x14/0x20 [faulty] ](#memory-breakdown) <sub>Memory<sub> <br />
 lr : vfs_write+0xa8/0x2b0<br />
 sp : ffffffc008d23d80<br />
 x29: ffffffc008d23d80 x28: ffffff80020e0cc0 x27: 0000000000000000<br>
@@ -45,7 +45,7 @@ x2 : 0000000000000012 x1 : 0000000000000000 x0 : 0000000000000000<br>
 
 
 Call trace:<br>
- [**faulty_write**+***0x14***/0x20 ***[faulty]***](#trace-breakdown) <sub> Trace <sub><br>
+ [**faulty_write**+***0x14***/0x20 ***[faulty]***](#trace-breakdown) <sub>Trace<sub><br>
  ksys_write+0x68/0x100 <br>
  __arm64_sys_write+0x20/0x30 <br>
  invoke_syscall+0x54/0x130 <br>
