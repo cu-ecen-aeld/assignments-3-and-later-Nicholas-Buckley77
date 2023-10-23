@@ -1,5 +1,5 @@
 # echo “hello_world” > /dev/faulty
-**Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000**[^1]
+**Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000** [^1]
 Mem abort info:
   ESR = 0x96000045
   EC = 0x25: DABT (current EL), IL = 32 bits
@@ -11,7 +11,7 @@ Data abort info:
   CM = 0, WnR = 1
 user pgtable: 4k pages, 39-bit VAs, pgdp=0000000042105000
 [0000000000000000] pgd=0000000000000000, p4d=0000000000000000, pud=0000000000000000
-**Internal error: Oops: 96000045 [#1] SMP**[^2]
+**Internal error: Oops: 96000045 [#1] SMP** [^2]
 Modules linked in: hello(O) faulty(O) scull(O)
 CPU: 0 PID: 159 Comm: sh Tainted: G           O      5.15.18 #1 [^3]
 Hardware name: linux,dummy-virt (DT)
@@ -43,7 +43,8 @@ Code: d2800001 d2800000 d503233f d50323bf (b900003f)
 ---[ end trace cb71849e2320ec34 ]---
 
 
-#My analysis
+##My analysis
+
 Line breakdown 1 [^1]: This is a segmentation fault from trying to derefence a NULL pointer simply put this kills all of the current tasks.
 
 Line breakdown 2 [^2]: This identifies that it is indeed a kernel oops!
