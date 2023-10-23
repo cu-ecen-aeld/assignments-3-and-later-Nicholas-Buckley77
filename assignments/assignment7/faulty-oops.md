@@ -1,5 +1,5 @@
 # echo “hello_world” > /dev/faulty
-[**Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000**](#line-breakdown-1) <br />
+[**Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000**](#line-breakdown-1) <sub>Line 1<sub> <br />
 
 
 
@@ -16,20 +16,20 @@ user pgtable: 4k pages, 39-bit VAs, pgdp=0000000042105000 <br />
 [0000000000000000] pgd=0000000000000000, p4d=0000000000000000, pud=0000000000000000 <br />
 
 
-[**Internal error: Oops: 96000045 [#1] SMP**](#line-breakdown-2)<br />
+[**Internal error: Oops: 96000045 [#1] SMP**](#line-breakdown-2) <sub> Line 2 <sub> <br /> 
 
 
 Modules linked in: hello(O) faulty(O) scull(O)<br />
 
 
-[CPU: 0 PID: 159 Comm: sh Tainted: G           O      5.15.18 #1](#line-breakdown-3)<br />
+[CPU: 0 PID: 159 Comm: sh Tainted: G           O      5.15.18 #1](#line-breakdown-3) <sub> Line 3 <sub><br />
 
 
 Hardware name: linux,dummy-virt (DT) <br />
 pstate: 80000005 (Nzcv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--) <br />
 
 
-[pc : faulty_write+0x14/0x20 [faulty] ](#memory-breakdown)<br />
+[pc : faulty_write+0x14/0x20 [faulty] ](#memory-breakdown) <sub> Memory <sub><br />
 lr : vfs_write+0xa8/0x2b0<br />
 sp : ffffffc008d23d80<br />
 x29: ffffffc008d23d80 x28: ffffff80020e0cc0 x27: 0000000000000000<br>
@@ -45,7 +45,7 @@ x2 : 0000000000000012 x1 : 0000000000000000 x0 : 0000000000000000<br>
 
 
 Call trace:<br>
- [**faulty_write**+***0x14***/0x20 ***[faulty]***](#trace-breakdown) <br>
+ [**faulty_write**+***0x14***/0x20 ***[faulty]***](#trace-breakdown) <sub> Trace <sub><br>
  ksys_write+0x68/0x100 <br>
  __arm64_sys_write+0x20/0x30 <br>
  invoke_syscall+0x54/0x130 <br>
