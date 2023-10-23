@@ -1,5 +1,5 @@
 # echo “hello_world” > /dev/faulty
-**Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000** [^1]
+**Unable to handle kernel NULL pointer dereference at virtual address 0000000000000000** [^1] 
 Mem abort info:
   ESR = 0x96000045
   EC = 0x25: DABT (current EL), IL = 32 bits
@@ -11,12 +11,12 @@ Data abort info:
   CM = 0, WnR = 1
 user pgtable: 4k pages, 39-bit VAs, pgdp=0000000042105000
 [0000000000000000] pgd=0000000000000000, p4d=0000000000000000, pud=0000000000000000
-**Internal error: Oops: 96000045 [#1] SMP** [^2]
+**Internal error: Oops: 96000045 [#1] SMP** [^2] 
 Modules linked in: hello(O) faulty(O) scull(O)
-CPU: 0 PID: 159 Comm: sh Tainted: G           O      5.15.18 #1 [^3]
+CPU: 0 PID: 159 Comm: sh Tainted: G           O      5.15.18 #1 [^3] 
 Hardware name: linux,dummy-virt (DT)
 pstate: 80000005 (Nzcv daif -PAN -UAO -TCO -DIT -SSBS BTYPE=--)
-pc : faulty_write+0x14/0x20 [faulty] [^4]
+pc : faulty_write+0x14/0x20 [faulty] [^4] 
 lr : vfs_write+0xa8/0x2b0
 sp : ffffffc008d23d80
 x29: ffffffc008d23d80 x28: ffffff80020e0cc0 x27: 0000000000000000
@@ -30,7 +30,7 @@ x8 : 0000000000000000 x7 : 0000000000000000 x6 : 0000000000000000
 x5 : 0000000000000001 x4 : ffffffc0006f7000 x3 : ffffffc008d23df0
 x2 : 0000000000000012 x1 : 0000000000000000 x0 : 0000000000000000
 Call trace:
- **faulty_write**+***0x14***/0x20 ***[faulty]*** [^5]
+ **faulty_write**+***0x14***/0x20 ***[faulty]*** [^5] 
  ksys_write+0x68/0x100
  __arm64_sys_write+0x20/0x30
  invoke_syscall+0x54/0x130
