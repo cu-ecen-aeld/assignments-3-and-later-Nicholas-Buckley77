@@ -30,9 +30,16 @@
 
 
 #define BUFFER_SIZE 1024
-#define DATA_PATH ("/var/tmp/aesdsocketdata")
 #define PORT_NUM ("9000")
 #define DELAY_TO_STAMP (10)
+#define USE_AESD_CHAR_DEVICE (1)
+
+#if(USE_AESD_CHAR_DEVICE)
+
+    #define DATA_PATH ("/var/tmp/aesdchar")
+#else
+    #define DATA_PATH ("/var/tmp/aesdsocketdata")
+#endif
 
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -133,7 +140,12 @@ void cleanUp(int exitVal)
     syslog(LOG_INFO,"Caught signal or failed, exiting");
 
     closelog();
+
+#if(USE_AESD_CHAR_DEVICE)
+    syslog(LOG_INFO,"Not removing datapath!");
+#else
     remove(DATA_PATH);
+#endif
     exit(exitVal);
 }
 
@@ -143,7 +155,7 @@ void exitSigHandler(int signo)
     {
         // Setup for main to cleanup!
         cleanUpTime = true;
-        cleanUp(EXIT_SUCCESS); // not totally safe but passes for now... The problem is cleaningup time stamper quickly for the test
+        //cleanUp(EXIT_SUCCESS); // not totally safe but passes for now... The problem is cleaningup time stamper quickly for the test
     }
 }
 
@@ -428,7 +440,11 @@ int main( int argc, char* argv[]) {
         umask(0);
 
     }
+
+#if(USE_AESD_CHAR_DEVICE)
+#else
     pthread_create(&timerStampThread,NULL, timeStamper, NULL);
+#endif
 
     
     while (!cleanUpTime) 
