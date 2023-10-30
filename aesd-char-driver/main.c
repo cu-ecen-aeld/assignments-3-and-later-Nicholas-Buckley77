@@ -28,7 +28,6 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
 
-struct aesd_buffer_entry entryToWrite;
 
 // scull open but aesd instead of scull!
 int aesd_open(struct inode *inode, struct file *filp)
@@ -77,7 +76,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     local_aesd_dev_ptr = (struct aesd_dev*)(filp->private_data);
 
-    if(mutex_lock_interruptible(&local_aesd_dev_ptr->aesd_mutex))
+    if(mutex_lock_interruptible(&(local_aesd_dev_ptr->aesd_mutex)))
     {
         printk(KERN_ALERT "Mutex for local dev filp private data didn't lock!!!");
         retval = -ERESTARTSYS; 
@@ -91,6 +90,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     if(foundEntry == NULL)
     {
         // entry not found
+        printk(KERN_ALERT "Entry not found!!!");
         mutex_unlock(&local_aesd_dev_ptr->aesd_mutex);
         goto exit_early_read;
     }
@@ -103,9 +103,9 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     // Send entry found at the offset with remaining or max count
     bytesNotCopied = copy_to_user(buf, (foundEntry->buffptr + offsetRtrn), bytesAvailToRead);
 
-    if(!bytesNotCopied)
+    if(bytesNotCopied != 0)
     {
-        printk(KERN_ALERT "Mutex for local dev filp private data didn't lock!!!");
+        printk(KERN_ALERT "bytes not coppied!!!");
         retval = -ERESTARTSYS;
         mutex_unlock(&local_aesd_dev_ptr->aesd_mutex);
         goto exit_early_read;
@@ -121,8 +121,14 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
 void freeCurrentInEntry(struct aesd_circular_buffer *buffer)
 {
+    //if(buffer->entry[buffer->in_offs] != NULL)
+    //{
+    printk(KERN_ALERT "freeing an entry");
+
     kfree(buffer->entry[buffer->in_offs].buffptr);
     buffer->entry[buffer->in_offs].size = 0;
+    buffer->entry[buffer->in_offs].buffptr = NULL;
+    //}
 }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
@@ -157,18 +163,18 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
 
     
-    if(entryToWrite.size == 0) // if nothing is being written
+    if(local_aesd_dev_ptr->entryToWrite.size == 0) // if nothing is being written
     {
         // kmalloc the buffer of count bytes
-        entryToWrite.buffptr = kmalloc(count * sizeof(char), GFP_KERNEL);
+        local_aesd_dev_ptr->entryToWrite.buffptr = kmalloc(count * sizeof(char), GFP_KERNEL);
     }
     else
     {
         // realloc to the new size count bytes
-        entryToWrite.buffptr = krealloc(entryToWrite.buffptr, (count + entryToWrite.size)*sizeof(char), GFP_KERNEL);
+        local_aesd_dev_ptr->entryToWrite.buffptr = krealloc(local_aesd_dev_ptr->entryToWrite.buffptr, (count + local_aesd_dev_ptr->entryToWrite.size)*sizeof(char), GFP_KERNEL);
     }
 
-    if(entryToWrite.buffptr == NULL)
+    if(local_aesd_dev_ptr->entryToWrite.buffptr == NULL)
     {
         retval = -ENOMEM;  // not enough memory
         mutex_unlock(&local_aesd_dev_ptr->aesd_mutex); // unlock mutex for next transaction
@@ -176,28 +182,34 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     }
 
     // append to currently being written buffer
-    uncopBytes = copy_from_user((void*)(entryToWrite.buffptr + entryToWrite.size), buf, count);
-    entryToWrite.size += count - uncopBytes; 
+    uncopBytes = copy_from_user((void*)(local_aesd_dev_ptr->entryToWrite.buffptr + local_aesd_dev_ptr->entryToWrite.size), buf, count);
+    local_aesd_dev_ptr->entryToWrite.size += count - uncopBytes; 
+
     i = 0;
     newLineFound = 0;
-    while (!newLineFound  && i < entryToWrite.size)
+    while (!newLineFound  && i < local_aesd_dev_ptr->entryToWrite.size)
     {
         
-        if(entryToWrite.buffptr[i] == '\n')
+        if(local_aesd_dev_ptr->entryToWrite.buffptr[i] == '\n')
         {
-            retval = entryToWrite.size;
+            retval = local_aesd_dev_ptr->entryToWrite.size;
             if(local_aesd_dev_ptr->circBuf.full) // if Im overwritting an already existing entry
             { // free it before overwrite
-                freeCurrentInEntry(&local_aesd_dev_ptr->circBuf);
-            }
 
-            aesd_circular_buffer_add_entry(&local_aesd_dev_ptr->circBuf,&entryToWrite);
-            kfree(entryToWrite.buffptr);
-            entryToWrite.buffptr = NULL;
-            entryToWrite.size = 0;
+                freeCurrentInEntry(&(local_aesd_dev_ptr->circBuf));
+            }
+            printk(KERN_ALERT "Adding entry %s %ld\r\n",local_aesd_dev_ptr->entryToWrite.buffptr, local_aesd_dev_ptr->entryToWrite.size);
+
+            aesd_circular_buffer_add_entry(&local_aesd_dev_ptr->circBuf,&local_aesd_dev_ptr->entryToWrite);
+            local_aesd_dev_ptr->entryToWrite.buffptr = NULL;
+            local_aesd_dev_ptr->entryToWrite.size = 0;
             newLineFound ++;
         }
         i++;
+    }
+    if(newLineFound == 0)
+    {
+        printk(KERN_ALERT "didnt add entry %s %ld\r\n",local_aesd_dev_ptr->entryToWrite.buffptr, local_aesd_dev_ptr->entryToWrite.size);
     }
 
     mutex_unlock(&local_aesd_dev_ptr->aesd_mutex); // unlock mutex for next transaction
@@ -248,7 +260,7 @@ int aesd_init_module(void)
     /**
      * TODO: initialize the AESD specific portion of the device
      */
-    memset(&entryToWrite,0,sizeof(struct aesd_buffer_entry));
+    memset(&aesd_device.entryToWrite,0,sizeof(struct aesd_buffer_entry));
     
     mutex_init(&aesd_device.aesd_mutex);
 
@@ -274,9 +286,9 @@ void aesd_cleanup_module(void)
     /**
      * TODO: cleanup AESD specific poritions here as necessary
      */
-    kfree(entryToWrite.buffptr );
-    entryToWrite.buffptr = NULL;
-    entryToWrite.size = 0;
+    kfree(aesd_device.entryToWrite.buffptr );
+    aesd_device.entryToWrite.buffptr = NULL;
+    aesd_device.entryToWrite.size = 0;
 
 
 

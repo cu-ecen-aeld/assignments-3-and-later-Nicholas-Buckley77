@@ -42,7 +42,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     }
 
     // while there are still entries to check...
-    while (buffer->entry[entryIndex].buffptr !=NULL && entryIndex < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED + buffer->out_offs)
+    while (buffer->entry[entryIndex%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].buffptr !=NULL && entryIndex < AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED + buffer->out_offs)
     {
         // check if the char index is located in the buffer entry
 
@@ -52,6 +52,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
             // update the index by subtracting the char count of the entry and go to the next entry
             index-=buffer->entry[entryIndex%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED].size;
             entryIndex++;
+            
         }
         else
         {
@@ -76,26 +77,29 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     /**
     * chat gpt assisted implementation "add circular buffer entry for wrapping circular buffer c" (it mostly reminded me of the structure and order of implementation)
     */
-    
-    // add or override entry and size to the current new in_offs
-    buffer->entry[buffer->in_offs].buffptr = add_entry->buffptr;
-    buffer->entry[buffer->in_offs].size = add_entry->size;
 
-    // check if the buffer was full...
-    if(buffer->full)
+    int currentIn = buffer->in_offs;
+    // add or override entry and size to the current new in_offs
+    buffer->entry[currentIn].buffptr = add_entry->buffptr;
+    buffer->entry[currentIn].size = add_entry->size;
+
+    currentIn++;
+
+    if (currentIn >= AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED)
     {
-        // if it was then update the out as it just got overriden
-        buffer->out_offs = (buffer->out_offs + 1)%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+        currentIn = 0;
     }
 
+
     // update buffer in_off
-    buffer->in_offs = (buffer->in_offs + 1)%AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED;
+    buffer->in_offs = currentIn;
     
     // if in and out are the same
-    if(buffer->in_offs ==  buffer->out_offs )
+    if(buffer->in_offs ==  buffer->out_offs || buffer->full )
     {
         // the buffer is full
         buffer->full = true;
+        buffer->out_offs = currentIn;
     }
     
 
