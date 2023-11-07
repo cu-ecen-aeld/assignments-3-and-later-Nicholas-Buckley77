@@ -277,7 +277,6 @@ void *add_to_queue_and_send(void *arg) {
                     {
                         //printf("IOCTL FAILED");
                         syslog(LOG_ERR,"ioctl failed...");
-                        cleanUp(EXIT_FAILURE);
                     }
                     else
                     {
@@ -299,15 +298,16 @@ void *add_to_queue_and_send(void *arg) {
                     syslog(LOG_ERR,"Bytes not written");
                     cleanUp(EXIT_FAILURE);
                 }
-
-                // if there was a \n written to the file...
-                if(strchr(buffer,'\n') != NULL)
-                {
-                    recieving = false;
-                }
 #if(USE_AESD_CHAR_DEVICE)
             }
 #endif
+
+            // if there was a \n written to the file...
+            if(strchr(buffer,'\n') != NULL)
+            {
+                recieving = false;
+            }
+
 
         }
     }
