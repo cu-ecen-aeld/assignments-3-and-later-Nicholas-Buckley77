@@ -267,15 +267,15 @@ void *add_to_queue_and_send(void *arg) {
             struct aesd_seekto seek;
             if(strncmp(buffer, seekToString, strlen(seekToString)) == 0)
             {
-                printf("WE ARE GOING TO SEEK");
+                //printf("WE ARE GOING TO SEEK");
                 // chat gpt example based "What c function can I use to scan decimals out of a string"
                 if(sscanf(buffer, "AESDCHAR_IOCSEEKTO:%u,%u", &seek.write_cmd, &seek.write_cmd_offset) == NUMSCANNED)
                 {
-                    printf("SCENNED %d", seek.write_cmd_offset);
+                    //printf("SCENNED %d", seek.write_cmd_offset);
 
                     if(ioctl(wr_fp, AESDCHAR_IOCSEEKTO, &seek) != 0)
                     {
-                        printf("IOCTL FAILED");
+                        //printf("IOCTL FAILED");
                         syslog(LOG_ERR,"ioctl failed...");
                         cleanUp(EXIT_FAILURE);
                     }
@@ -293,7 +293,7 @@ void *add_to_queue_and_send(void *arg) {
             {
 
 #endif
-                printf("SENDING %s", buffer);
+                //printf("SENDING %s", buffer);
                 if(write(wr_fp,buffer,bytes_received) == -1)
                 {
                     syslog(LOG_ERR,"Bytes not written");
