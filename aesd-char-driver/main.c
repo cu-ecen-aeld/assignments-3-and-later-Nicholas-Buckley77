@@ -331,7 +331,7 @@ static long aesd_adjust_file_offset(struct file *filp, unsigned int write_cmd, u
 
 }
 
-
+// based on unlocked ioctl and overview example!
 static long aesd_ioctl(struct file *filp, unsigned int write_cmd, unsigned long write_arg)
 {
     long retVal = 0;
