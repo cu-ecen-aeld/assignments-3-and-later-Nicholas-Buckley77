@@ -28,6 +28,9 @@
 #include <sys/time.h>
 
 
+// assignmnet 9
+#include "../aesd-char-driver/aesd_ioctl.h"
+
 
 #define BUFFER_SIZE 1024
 #define PORT_NUM ("9000")
@@ -37,6 +40,7 @@
 #if(USE_AESD_CHAR_DEVICE)
 
     #define DATA_PATH ("/var/tmp/aesdchar")
+    #define NUMSCANNED (2)
 #else
     #define DATA_PATH ("/var/tmp/aesdsocketdata")
 #endif
@@ -44,6 +48,7 @@
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t trasactionMutex = PTHREAD_MUTEX_INITIALIZER;
+const char *seekToString = "AESDCHAR_IOCSEEKTO:";
 
 // copied from freebsd
 #define	SLIST_FOREACH_SAFE(var, head, field, tvar)			\
@@ -53,8 +58,7 @@ pthread_mutex_t trasactionMutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Setup global file pointers and runAsDaemon
 int sockfd;
-int writefp;
-int readfp;
+int wr_fp;
 
 
 bool runAsDaemon = false;
@@ -96,17 +100,12 @@ SLIST_HEAD(head_s, node) head;
 */
 void cleanUp(int exitVal)
 {
-    if (writefp != -1) 
+    if (wr_fp != -1) 
     {
-        close(writefp);
-        writefp = -1;
+        close(wr_fp);
+        wr_fp = -1;
     }
 
-    if (readfp != -1) 
-    {
-        close(readfp);
-        readfp = -1;
-    }
 
     if (sockfd != -1) 
     {
@@ -236,11 +235,13 @@ void *add_to_queue_and_send(void *arg) {
     int bytes_received ;
 
     bool recieving = true;
+    bool ioctl_call = false;
+
     pthread_mutex_lock(&trasactionMutex);
     // open the writing file and create it if it doesn't exist!
-    writefp = open(DATA_PATH, O_RDWR | O_CREAT |  O_APPEND, 0664);
+    wr_fp = open(DATA_PATH, O_RDWR | O_CREAT |  O_APPEND, 0664);
 
-    if (writefp == -1 ) 
+    if (wr_fp == -1 ) 
     {
         syslog(LOG_ERR,"Open write file failed");
         cleanUp(EXIT_FAILURE);
@@ -262,41 +263,75 @@ void *add_to_queue_and_send(void *arg) {
         else
         {
         
-        
-            if(write(writefp,buffer,bytes_received) == -1)
+#if(USE_AESD_CHAR_DEVICE)
+            struct aesd_seekto seek;
+            if(strncmp(buffer, seekToString, strlen(seekToString)) == 0)
             {
-                syslog(LOG_ERR,"Bytes not written");
-                cleanUp(EXIT_FAILURE);
+                //printf("WE ARE GOING TO SEEK");
+                // chat gpt example based "What c function can I use to scan decimals out of a string"
+                if(sscanf(buffer, "AESDCHAR_IOCSEEKTO:%u,%u", &seek.write_cmd, &seek.write_cmd_offset) == NUMSCANNED)
+                {
+                    //printf("SCANNED %d", seek.write_cmd_offset);
+
+                    if(ioctl(wr_fp, AESDCHAR_IOCSEEKTO, &seek) != 0)
+                    {
+                        //printf("IOCTL FAILED");
+                        syslog(LOG_ERR,"ioctl failed...");
+                    }
+                    else
+                    {
+                        ioctl_call = true;
+                    }
+                }
+                else
+                {
+                    syslog(LOG_ERR,"command and command offset not after AESDCHAR...");
+                }
             }
+            else
+            {
+
+#endif
+                //printf("SENDING %s", buffer);
+                if(write(wr_fp,buffer,bytes_received) == -1)
+                {
+                    syslog(LOG_ERR,"Bytes not written");
+                    cleanUp(EXIT_FAILURE);
+                }
+#if(USE_AESD_CHAR_DEVICE)
+            }
+#endif
 
             // if there was a \n written to the file...
             if(strchr(buffer,'\n') != NULL)
             {
                 recieving = false;
             }
+
+
         }
     }
     // Reset file pointer
-    close(writefp);
+    //close(writefp);
     //pthread_mutex_unlock(&trasactionMutex);
 
         
-
+    if(!ioctl_call)
+    {
+        // got to the beginning of the file
+        lseek(wr_fp, 0, SEEK_SET);
+    }
 
 
     //pthread_mutex_lock(&trasactionMutex);
 
     // Open file to be read only
-    readfp = open(DATA_PATH,  O_RDONLY );
-    if (readfp == -1 ) 
-    {
-        syslog(LOG_INFO,"open fail on read");
-        cleanUp(EXIT_FAILURE);
-    }
+    //readfp = open(DATA_PATH,  O_RDONLY );
+    
 
     int bytes_send;
     // Send file data until there's nothing left
-    while ((bytes_send = read(readfp, sendBuffer, BUFFER_SIZE )) > 0) 
+    while ((bytes_send = read(wr_fp, sendBuffer, BUFFER_SIZE )) > 0) 
     {
         
         if (send(addedNode->socketFd, sendBuffer, bytes_send, 0) == -1) 
@@ -307,7 +342,7 @@ void *add_to_queue_and_send(void *arg) {
         }
 
     }
-    close(readfp);
+    close(wr_fp);
     pthread_mutex_unlock(&trasactionMutex);
 
     // Close connection from the ip and the socket and readfile to reset back to accept

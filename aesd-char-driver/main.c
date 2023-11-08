@@ -20,10 +20,14 @@
 #include "aesdchar.h"
 #include <linux/slab.h>
 
+// assignment 9
+#include "aesdchar.h"
+#include "aesd_ioctl.h"
+
 int aesd_major =   0; // use dynamic major
 int aesd_minor =   0;
 
-MODULE_AUTHOR("Nicholas Buckley"); /** TODO: fill in your name **/
+MODULE_AUTHOR("Nicholas Buckley");
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
@@ -34,14 +38,12 @@ int aesd_open(struct inode *inode, struct file *filp)
 {
     struct aesd_dev* dev;
     PDEBUG("open");
-    /**
-     * TODO: handle open container of with inode->i_cdev 
-     */
     dev = container_of(inode->i_cdev, struct aesd_dev , cdev);
     filp->private_data = dev;
     return 0;
 }
 
+/* Not required as it is handled elsewhere*/
 int aesd_release(struct inode *inode, struct file *filp)
 {
     PDEBUG("release");
@@ -50,6 +52,7 @@ int aesd_release(struct inode *inode, struct file *filp)
      */
     return 0;
 }
+
 
 ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
                 loff_t *f_pos)
@@ -64,10 +67,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     struct aesd_buffer_entry* foundEntry;
 
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
-    /**
-     * TODO: handle read copy_to_user
-     */
-    if(filp == NULL || buf == NULL || f_pos == NULL)
+    
+    if(filp == NULL )
     {
         PDEBUG("Null pointer passed to read...");
         retval = -EFAULT; 
@@ -121,14 +122,13 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
 void freeCurrentInEntry(struct aesd_circular_buffer *buffer)
 {
-    //if(buffer->entry[buffer->in_offs] != NULL)
-    //{
+    
     printk(KERN_ALERT "freeing an entry");
 
     kfree(buffer->entry[buffer->in_offs].buffptr);
     buffer->entry[buffer->in_offs].size = 0;
     buffer->entry[buffer->in_offs].buffptr = NULL;
-    //}
+    
 }
 
 ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
@@ -142,9 +142,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
 
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
-    /**
-     * TODO: handle write
-     */
+    
     if(filp == NULL || buf == NULL || f_pos == NULL)
     {
         PDEBUG("Null pointer passed to write...");
@@ -184,6 +182,9 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     // append to currently being written buffer
     uncopBytes = copy_from_user((void*)(local_aesd_dev_ptr->entryToWrite.buffptr + local_aesd_dev_ptr->entryToWrite.size), buf, count);
     local_aesd_dev_ptr->entryToWrite.size += count - uncopBytes; 
+    retval = count - uncopBytes;
+
+    *f_pos += retval;
 
     i = 0;
     newLineFound = 0;
@@ -220,12 +221,190 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
     return retval;
 }
+
+
+// assignment 9
+/* wrapper for fixed_size_llseek*/
+loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
+{
+    loff_t retval = 0;
+    loff_t bytesTotal = 0;
+    int buffIndex = 0;
+
+    struct aesd_dev* local_aesd_dev_ptr;
+
+    struct aesd_buffer_entry* countEntry;
+
+    if(filp == NULL )
+    {
+        PDEBUG("Null pointer passed to llseek...");
+        retval = -EFAULT; 
+        goto exit_early_llseek;
+    }
+    local_aesd_dev_ptr = (struct aesd_dev*)(filp->private_data);
+
+    if(mutex_lock_interruptible(&(local_aesd_dev_ptr->aesd_mutex)))
+    {
+        printk(KERN_ALERT "Mutex for local dev filp private data didn't lock!!!");
+        retval = -ERESTARTSYS; 
+        goto exit_early_llseek;
+    }
+
+    AESD_CIRCULAR_BUFFER_FOREACH(countEntry, &local_aesd_dev_ptr->circBuf, buffIndex)
+    {
+        // get the total size of the content of the buffer for fixed size llseek
+        bytesTotal += countEntry->size;
+    }
+
+
+    retval = fixed_size_llseek(filp,offset,whence,bytesTotal);
+    mutex_unlock(&local_aesd_dev_ptr->aesd_mutex); // unlock mutex for next transaction
+
+
+
+    exit_early_llseek:
+
+    return retval;
+
+}
+// from overview suggestions
+
+static long aesd_adjust_file_offset(struct file *filp, unsigned int write_cmd, unsigned int write_cmd_offset)
+{
+    long retVal = 0;
+    int buffCount = 0;
+    loff_t newFpo;
+
+    struct aesd_dev* local_aesd_dev_ptr;
+
+    struct aesd_buffer_entry* countEntry;
+
+    if(filp == NULL )
+    {
+        PDEBUG("Null pointer passed to adjust...");
+        retVal = -EFAULT; 
+        goto exit_early_adjust;
+    }
+    local_aesd_dev_ptr = (struct aesd_dev*)(filp->private_data);
+
+    
+    newFpo = filp->f_pos;
+
+    if(mutex_lock_interruptible(&(local_aesd_dev_ptr->aesd_mutex)))
+    {
+        printk(KERN_ALERT "Mutex for local dev filp private data didn't lock!!!");
+        retVal = -ERESTARTSYS; 
+        goto exit_early_adjust;
+    }
+
+    // count entries and sum size to cmd
+    AESD_CIRCULAR_BUFFER_FOREACH(countEntry, &local_aesd_dev_ptr->circBuf, buffCount)
+    {
+        if (buffCount < write_cmd)
+        {
+            newFpo += countEntry->size;
+        }
+    }
+
+
+    // haven't written the command yet
+    if (write_cmd > buffCount  || write_cmd < 0 ||
+    // command out of range
+    write_cmd > AESDCHAR_MAX_WRITE_OPERATIONS_SUPPORTED || write_cmd > buffCount ||
+    // command offset >= size of cmd
+    write_cmd_offset < 0 || write_cmd_offset >= local_aesd_dev_ptr->circBuf.entry[write_cmd].size)
+    {
+        PDEBUG("copy_from_user returned zero in aesd_ioctl...");
+        retVal = -EINVAL;
+        mutex_unlock(&local_aesd_dev_ptr->aesd_mutex);
+        goto exit_early_adjust;
+    }
+
+    // size to command + offset = newFpointer
+    newFpo += write_cmd_offset;
+
+    filp->f_pos = newFpo;
+    mutex_unlock(&local_aesd_dev_ptr->aesd_mutex); // unlock mutex for next transaction
+
+    exit_early_adjust:
+
+    return retVal;
+
+}
+
+// based on unlocked ioctl and overview example!
+static long aesd_ioctl(struct file *filp, unsigned int write_cmd, unsigned long write_arg)
+{
+    long retVal = 0;
+
+    struct aesd_seekto seek;
+
+    struct aesd_dev* local_aesd_dev_ptr;
+
+
+    if(_IOC_TYPE(write_cmd) != AESD_IOC_MAGIC)
+    {
+        PDEBUG("Non-Magic cmd type...");
+        retVal = -ENOTTY;
+        goto exit_early_ioctl;
+
+    }
+
+    if(_IOC_NR(write_cmd) > AESDCHAR_IOC_MAXNR)
+    {
+        PDEBUG("NR greater than max NR...");
+        retVal = -ENOTTY;
+        goto exit_early_ioctl;
+
+    }
+
+    if(filp == NULL )
+    {
+        PDEBUG("Null pointer passed to ioctl...");
+        retVal = -EFAULT; 
+        goto exit_early_ioctl;
+    }
+
+    local_aesd_dev_ptr = (struct aesd_dev*)(filp->private_data);
+
+    
+    // lecture implementation
+    
+    switch (write_cmd)
+    {
+        case AESDCHAR_IOCSEEKTO:
+
+        if (copy_from_user(&seek, (struct aesd_seekto *)write_arg, sizeof(struct aesd_seekto)) != 0)
+        {
+            PDEBUG("copy_from_user did not get all values in aesd_ioctl...");
+            retVal = -EFAULT;
+            goto exit_early_ioctl;
+        }
+        else
+        {
+            retVal = aesd_adjust_file_offset(filp, seek.write_cmd, seek.write_cmd_offset);
+        }
+        break;
+
+        default:
+            retVal = -ENOTTY;
+        break;
+    }
+
+    exit_early_ioctl:
+
+    return retVal;
+}
+
+
 struct file_operations aesd_fops = {
     .owner =    THIS_MODULE,
     .read =     aesd_read,
     .write =    aesd_write,
     .open =     aesd_open,
     .release =  aesd_release,
+    .llseek = aesd_llseek,
+    .unlocked_ioctl = aesd_ioctl,
 };
 
 static int aesd_setup_cdev(struct aesd_dev *dev)
@@ -283,13 +462,10 @@ void aesd_cleanup_module(void)
 
     cdev_del(&aesd_device.cdev);
 
-    /**
-     * TODO: cleanup AESD specific poritions here as necessary
-     */
     kfree(aesd_device.entryToWrite.buffptr );
     aesd_device.entryToWrite.buffptr = NULL;
     aesd_device.entryToWrite.size = 0;
-
+    mutex_destroy(&aesd_device.aesd_mutex);
 
 
     AESD_CIRCULAR_BUFFER_FOREACH(curEntry, &aesd_device.circBuf, i)
