@@ -256,9 +256,10 @@ loff_t aesd_llseek(struct file *filp, loff_t offset, int whence)
         bytesTotal += countEntry->size;
     }
 
-    mutex_unlock(&local_aesd_dev_ptr->aesd_mutex); // unlock mutex for next transaction
 
     retval = fixed_size_llseek(filp,offset,whence,bytesTotal);
+    mutex_unlock(&local_aesd_dev_ptr->aesd_mutex); // unlock mutex for next transaction
+
 
 
     exit_early_llseek:

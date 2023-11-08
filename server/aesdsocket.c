@@ -271,7 +271,7 @@ void *add_to_queue_and_send(void *arg) {
                 // chat gpt example based "What c function can I use to scan decimals out of a string"
                 if(sscanf(buffer, "AESDCHAR_IOCSEEKTO:%u,%u", &seek.write_cmd, &seek.write_cmd_offset) == NUMSCANNED)
                 {
-                    //printf("SCENNED %d", seek.write_cmd_offset);
+                    //printf("SCANNED %d", seek.write_cmd_offset);
 
                     if(ioctl(wr_fp, AESDCHAR_IOCSEEKTO, &seek) != 0)
                     {
